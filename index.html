@@ -4,12 +4,21 @@
   <meta charset="UTF-8" />
   <title>WaniKani Sentence Practice</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Kosugi+Maru&family=Zen+Kaku+Gothic+New&family=Yuji+Boku&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Kosugi+Maru&family=M+PLUS+1p&family=Noto+Sans+JP&family=Zen+Kaku+Gothic+New&family=Yuji+Boku&display=swap');
 
     body {
       font-family: sans-serif;
       text-align: center;
       padding: 2em;
+    }
+    #settingsBtn {
+      position: absolute;
+      top: 1em;
+      right: 1em;
+      background: none;
+      border: none;
+      font-size: 1.5em;
+      cursor: pointer;
     }
     #ja, #en {
       font-size: 2.5em;
@@ -20,148 +29,242 @@
       color: gray;
     }
     #progress, #log {
-      margin-top: 2em;
+      margin-top: 1em;
       font-size: 1em;
       color: #666;
     }
     .font-kosugi { font-family: 'Kosugi Maru', sans-serif; }
+    .font-mplus  { font-family: 'M PLUS 1p', sans-serif; }
+    .font-noto   { font-family: 'Noto Sans JP', sans-serif; }
     .font-zen    { font-family: 'Zen Kaku Gothic New', sans-serif; }
     .font-boku   { font-family: 'Yuji Boku', serif; }
+
+    button {
+      font-size: 1em;
+      padding: 0.5em 1em;
+      margin: 1em;
+    }
+
+    #settingsDialog {
+      display: none;
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 1.5em;
+      z-index: 10;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    #overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.3);
+      z-index: 5;
+    }
   </style>
 </head>
 <body>
   <h1>WaniKani Sentence Practice</h1>
   <div id="ja">Loading...</div>
   <div id="en"></div>
+  <button id="revealBtn">Reveal / Next</button>
   <div id="progress"></div>
   <div id="log"></div>
+  <button id="settingsBtn" onclick="showSettings()">⚙️</button>
+
+  <!-- Settings Popup -->
+  <div id="overlay" onclick="hideSettings()"></div>
+  <div id="settingsDialog">
+    <h3>Review Window Settings</h3>
+    <label>Start (min) day offset: <input id="minDays" type="number" min="0" max="30" /></label><br><br>
+    <label>End (max) day offset: <input id="maxDays" type="number" min="1" max="30" /></label><br><br>
+    <button onclick="saveSettings()">Save</button>
+    <button onclick="hideSettings()">Cancel</button>
+  </div>
 
   <script>
-    const API_TOKEN = localStorage.getItem('wanikani_api_token') || prompt("Enter your WaniKani API Token:");
-    localStorage.setItem('wanikani_api_token', API_TOKEN);
+  const API_TOKEN = localStorage.getItem('wanikani_api_token') || prompt("Enter your WaniKani API Token:");
+  localStorage.setItem('wanikani_api_token', API_TOKEN);
 
-    const headers = { "Authorization": `Bearer ${API_TOKEN}` };
-    const japaneseFonts = ["font-kosugi", "font-zen", "font-boku"];
+  const headers = { "Authorization": `Bearer ${API_TOKEN}` };
 
-    let vocabQueue = [];
-    let current = null;
-    let showingEnglish = false;
-    let total = 0;
+  const defaultSettings = { minDays: 1, maxDays: 7 };
+  let settings = JSON.parse(localStorage.getItem("settings") || JSON.stringify(defaultSettings));
+  let vocabQueue = [];
+  let current = null;
+  let showingEnglish = false;
+  let total = 0;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+  const weightedFonts = [
+    { class: 'font-kosugi', weight: 0.22 },
+    { class: 'font-mplus',  weight: 0.22 },
+    { class: 'font-noto',   weight: 0.22 },
+    { class: 'font-zen',    weight: 0.22 },
+    { class: 'font-boku',   weight: 0.12 }  // handwritten
+  ];
 
-    function getTodaySeenSentences() {
-      const log = JSON.parse(localStorage.getItem("review_log") || "[]");
-      return new Set(
-        log
-          .filter(r => r.reviewed_at.startsWith(todayStr))
-          .map(r => r.ja)
-      );
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  function getTodaySeenSentences() {
+    const log = JSON.parse(localStorage.getItem("review_log") || "[]");
+    return new Set(
+      log
+        .filter(r => r.reviewed_at.startsWith(todayStr))
+        .map(r => r.ja)
+    );
+  }
+
+  function weightedRandomFont() {
+    const r = Math.random();
+    let sum = 0;
+    for (const f of weightedFonts) {
+      sum += f.weight;
+      if (r < sum) return f.class;
+    }
+    return weightedFonts[weightedFonts.length - 1].class;
+  }
+
+  function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  async function fetchUpcomingVocab() {
+    const now = new Date();
+    const after = new Date(now.getTime() + settings.minDays * 86400000);
+    const before = new Date(now.getTime() + settings.maxDays * 86400000);
+
+    console.log("Using settings:", settings);
+    console.log("Fetching assignments between", after.toISOString(), "and", before.toISOString());
+
+    const url = new URL("https://api.wanikani.com/v2/assignments");
+    url.searchParams.set("subject_types", "vocabulary");
+    url.searchParams.set("available_after", after.toISOString());
+    url.searchParams.set("available_before", before.toISOString());
+    url.searchParams.set("burned", "false");
+    url.searchParams.set("hidden", "false");
+
+    const assignments = await fetch(url.toString(), { headers }).then(res => res.json());
+    const ids = assignments.data.map(a => a.data.subject_id);
+
+    console.log("Found assignments for vocab IDs:", ids);
+
+    const subjectDetails = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const batch = ids.slice(i, i + 100).join(',');
+      const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${batch}`, { headers }).then(res => res.json());
+      subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
     }
 
-    function shuffleArray(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
+    const seenToday = getTodaySeenSentences();
+
+    vocabQueue = subjectDetails.map(v => {
+      const sentences = v.data.context_sentences;
+      const rand = Math.floor(Math.random() * sentences.length);
+      const sent = sentences[rand];
+      return {
+        vocab_id: v.id,
+        characters: v.data.characters,
+        ja: sent.ja,
+        en: sent.en
+      };
+    }).filter(item => !seenToday.has(item.ja));
+
+    vocabQueue = shuffleArray(vocabQueue);
+    total = vocabQueue.length;
+    nextSentence();
+  }
+
+  function updateProgress() {
+    const done = total - vocabQueue.length;
+    document.getElementById("progress").innerText = `Progress: ${done} / ${total}`;
+  }
+
+  function nextSentence() {
+    if (vocabQueue.length === 0) {
+      document.getElementById("ja").innerText = "Done for now!";
+      document.getElementById("en").innerText = "";
+      document.getElementById("progress").innerText = "";
+      return;
     }
+    current = vocabQueue.shift();
+    showingEnglish = false;
 
-    async function fetchUpcomingVocab() {
-      const summary = await fetch("https://api.wanikani.com/v2/summary", { headers }).then(res => res.json());
-      const now = new Date();
-      const upcomingIds = summary.data.reviews
-        .filter(entry => {
-          const availableAt = new Date(entry.available_at);
-          const diffHours = (availableAt - now) / (1000 * 60 * 60);
-          return diffHours > 1 && diffHours <= 168;
-        })
-        .flatMap(entry => entry.subject_ids);
+    const jaDiv = document.getElementById("ja");
+    jaDiv.className = weightedRandomFont();
+    jaDiv.innerText = current.ja;
 
-      const subjectDetails = [];
-      for (let i = 0; i < upcomingIds.length; i += 100) {
-        const ids = upcomingIds.slice(i, i + 100).join(',');
-        const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${ids}`, { headers }).then(res => res.json());
-        subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
-      }
+    document.getElementById("en").innerText = current.en;
+    document.getElementById("en").style.display = "none";
 
-      const seenToday = getTodaySeenSentences();
+    updateProgress();
+  }
 
-      vocabQueue = subjectDetails.map(v => {
-        const sentences = v.data.context_sentences;
-        const rand = Math.floor(Math.random() * sentences.length);
-        const sent = sentences[rand];
-        return {
-          vocab_id: v.id,
-          characters: v.data.characters,
-          ja: sent.ja,
-          en: sent.en
-        };
-      }).filter(item => !seenToday.has(item.ja));
+  function logReview(known) {
+    const log = JSON.parse(localStorage.getItem("review_log") || "[]");
+    log.push({
+      vocab_id: current.vocab_id,
+      ja: current.ja,
+      en: current.en,
+      known,
+      reviewed_at: new Date().toISOString()
+    });
+    localStorage.setItem("review_log", JSON.stringify(log));
+    document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.ja} (${current.en})`;
+  }
 
-      vocabQueue = shuffleArray(vocabQueue);
-      total = vocabQueue.length;
+  function handleAdvance(correct = true) {
+    if (!current) return;
+    if (!showingEnglish) {
+      document.getElementById("en").style.display = "block";
+      showingEnglish = true;
+    } else {
+      logReview(correct);
       nextSentence();
     }
+  }
 
-    function updateProgress() {
-      const done = total - vocabQueue.length;
-      document.getElementById("progress").innerText = `Progress: ${done} / ${total}`;
+  document.getElementById("revealBtn").addEventListener("click", () => handleAdvance(true));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === " ") {
+      e.preventDefault();
+      handleAdvance(true);
+    } else if (e.key === "1") {
+      handleAdvance(false);
     }
+  });
 
-    function nextSentence() {
-      if (vocabQueue.length === 0) {
-        document.getElementById("ja").innerText = "Done for now!";
-        document.getElementById("en").innerText = "";
-        document.getElementById("progress").innerText = "";
-        return;
-      }
-      current = vocabQueue.shift();
-      showingEnglish = false;
+  function showSettings() {
+    document.getElementById("minDays").value = settings.minDays;
+    document.getElementById("maxDays").value = settings.maxDays;
+    document.getElementById("overlay").style.display = "block";
+    document.getElementById("settingsDialog").style.display = "block";
+  }
 
-      const jaDiv = document.getElementById("ja");
-      const font = japaneseFonts[Math.floor(Math.random() * japaneseFonts.length)];
-      jaDiv.className = font;
-      jaDiv.innerText = current.ja;
+  function hideSettings() {
+    document.getElementById("overlay").style.display = "none";
+    document.getElementById("settingsDialog").style.display = "none";
+  }
 
-      document.getElementById("en").innerText = current.en;
-      document.getElementById("en").style.display = "none";
+  function saveSettings() {
+    settings.minDays = parseInt(document.getElementById("minDays").value, 10);
+    settings.maxDays = parseInt(document.getElementById("maxDays").value, 10);
+    localStorage.setItem("settings", JSON.stringify(settings));
+    hideSettings();
+    location.reload(); // Reload to re-fetch with new window
+  }
 
-      updateProgress();
-    }
-
-    function logReview(known) {
-      const log = JSON.parse(localStorage.getItem("review_log") || "[]");
-      log.push({
-        vocab_id: current.vocab_id,
-        ja: current.ja,
-        en: current.en,
-        known,
-        reviewed_at: new Date().toISOString()
-      });
-      localStorage.setItem("review_log", JSON.stringify(log));
-      document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.ja} (${current.en})`;
-    }
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === " ") {
-        e.preventDefault();
-        if (!current) return;
-        if (!showingEnglish) {
-          document.getElementById("en").style.display = "block";
-          showingEnglish = true;
-        } else {
-          logReview(true);
-          nextSentence();
-        }
-      } else if (e.key === "1") {
-        if (!current) return;
-        logReview(false);
-        nextSentence();
-      }
-    });
-
-    fetchUpcomingVocab();
+  fetchUpcomingVocab();
   </script>
+
+
 </body>
 </html>
