@@ -21,4 +21,4 @@ No server or install needed — just open the file in a browser.
 
 # What does the Start (min) End (max) day offset stuff mean?
 
-In the settings, you use "Start (min) day offset" and "End (max) day offset" to select what period of time in the future you want to be studying for.  If you select 0 and 1, you will be studying vocab from today's set of WaniKani reviews.  If you select 1 and 2, you will be reviewing vocab that you will be reviewing tomorrow.  If you select 7 and 14 you will be reviewing vocabulary that you won't be tested on until next week.  Etc.  Hope that makes sense.
+In the settings, you use "Start (min) day offset" and "End (max) day offset" to select what period of time in the future you want to be studying for.  If you select 0 and 1, you will be studying vocab from today's set of WaniKani reviews.  If you select 1 and 2, you will be reviewing vocab that you WaniKani will be showing you tomorrow.  If you select 7 and 14 you will be reviewing vocabulary that you won't be tested on (by WaniKani) until next week.  Etc.  Hope that makes sense.
