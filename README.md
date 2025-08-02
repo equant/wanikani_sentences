@@ -3,7 +3,7 @@ WaniKani sentence practice browser-only tool.
 
 I quickly mocked up this “WaniKani Sentence Practice” browser-only tool. It…
 
-* Uses your WaniKani API key to fetch vocab with reviews due in a user-definable time period.
+* Uses your WaniKani API key to fetch vocab with reviews upcoming reviews (in a user-definable time period).
 * Shows one random context sentence per vocab word.
 * Lets you press Space to reveal the English translation and continue, or 1 to mark “didn’t know”.
 * Skips sentences you’ve already seen today.
