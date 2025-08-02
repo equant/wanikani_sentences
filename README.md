@@ -12,7 +12,7 @@ I quickly mocked up this “WaniKani Sentence Practice” browser-only tool. It�
 * Tracks progress and review history in localStorage (progress tracking isn’t utilized in any way at this point).
 * This is not an SRS tool, it's just a reading WaniKani sentences review tool.
 
-No server or install needed — just open the file in a browser.
+Just open the HTML file in a browser...
 
 # How to Use/Install?
 
