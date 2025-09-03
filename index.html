@@ -1,3 +1,4 @@
+<!-- WaniKani Sentence Practice App - Updated HTML -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -72,6 +73,7 @@
   <div id="ja">Loading...</div>
   <div id="en"></div>
   <button id="revealBtn">Reveal / Next</button>
+  <a id="translateLink" href="#" target="_blank" title="Open in Google Translate">🌐</a>
   <div id="progress"></div>
   <div id="log"></div>
   <button id="settingsBtn" onclick="showSettings()">⚙️</button>
@@ -79,192 +81,183 @@
   <!-- Settings Popup -->
   <div id="overlay" onclick="hideSettings()"></div>
   <div id="settingsDialog">
-    <h3>Review Window Settings</h3>
+    <h3>Settings</h3>
     <label>Start (min) day offset: <input id="minDays" type="number" min="0" max="30" /></label><br><br>
     <label>End (max) day offset: <input id="maxDays" type="number" min="1" max="30" /></label><br><br>
+    <label>WaniKani API Key: <input id="apiKeyInput" type="text" /></label><br><br>
     <button onclick="saveSettings()">Save</button>
     <button onclick="hideSettings()">Cancel</button>
   </div>
 
   <script>
-  const API_TOKEN = localStorage.getItem('wanikani_api_token') || prompt("Enter your WaniKani API Token:");
-  localStorage.setItem('wanikani_api_token', API_TOKEN);
+    const defaultSettings = { minDays: 1, maxDays: 7 };
+    let settings = JSON.parse(localStorage.getItem("settings") || JSON.stringify(defaultSettings));
 
-  const headers = { "Authorization": `Bearer ${API_TOKEN}` };
-
-  const defaultSettings = { minDays: 1, maxDays: 7 };
-  let settings = JSON.parse(localStorage.getItem("settings") || JSON.stringify(defaultSettings));
-  let vocabQueue = [];
-  let current = null;
-  let showingEnglish = false;
-  let total = 0;
-
-  const weightedFonts = [
-    { class: 'font-kosugi', weight: 0.22 },
-    { class: 'font-mplus',  weight: 0.22 },
-    { class: 'font-noto',   weight: 0.22 },
-    { class: 'font-zen',    weight: 0.22 },
-    { class: 'font-boku',   weight: 0.12 }  // handwritten
-  ];
-
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  function getTodaySeenSentences() {
-    const log = JSON.parse(localStorage.getItem("review_log") || "[]");
-    return new Set(
-      log
-        .filter(r => r.reviewed_at.startsWith(todayStr))
-        .map(r => r.ja)
-    );
-  }
-
-  function weightedRandomFont() {
-    const r = Math.random();
-    let sum = 0;
-    for (const f of weightedFonts) {
-      sum += f.weight;
-      if (r < sum) return f.class;
-    }
-    return weightedFonts[weightedFonts.length - 1].class;
-  }
-
-  function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-  }
-
-  async function fetchUpcomingVocab() {
-    const now = new Date();
-    const after = new Date(now.getTime() + settings.minDays * 86400000);
-    const before = new Date(now.getTime() + settings.maxDays * 86400000);
-
-    console.log("Using settings:", settings);
-    console.log("Fetching assignments between", after.toISOString(), "and", before.toISOString());
-
-    const url = new URL("https://api.wanikani.com/v2/assignments");
-    url.searchParams.set("subject_types", "vocabulary");
-    url.searchParams.set("available_after", after.toISOString());
-    url.searchParams.set("available_before", before.toISOString());
-    url.searchParams.set("burned", "false");
-    url.searchParams.set("hidden", "false");
-
-    const assignments = await fetch(url.toString(), { headers }).then(res => res.json());
-    const ids = assignments.data.map(a => a.data.subject_id);
-
-    console.log("Found assignments for vocab IDs:", ids);
-
-    const subjectDetails = [];
-    for (let i = 0; i < ids.length; i += 100) {
-      const batch = ids.slice(i, i + 100).join(',');
-      const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${batch}`, { headers }).then(res => res.json());
-      subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
+    let API_TOKEN = localStorage.getItem("wanikani_api_token");
+    if (!API_TOKEN) {
+      API_TOKEN = prompt("Enter your WaniKani API Token:");
+      if (API_TOKEN && API_TOKEN.trim() !== "") {
+        localStorage.setItem("wanikani_api_token", API_TOKEN);
+      } else {
+        alert("API key is required. Reload the page and enter it when prompted.");
+        throw new Error("No API key provided");
+      }
     }
 
-    const seenToday = getTodaySeenSentences();
+    const headers = { "Authorization": `Bearer ${API_TOKEN}` };
 
-    vocabQueue = subjectDetails.map(v => {
-      const sentences = v.data.context_sentences;
-      const rand = Math.floor(Math.random() * sentences.length);
-      const sent = sentences[rand];
-      return {
-        vocab_id: v.id,
-        characters: v.data.characters,
-        ja: sent.ja,
-        en: sent.en
-      };
-    }).filter(item => !seenToday.has(item.ja));
+    const weightedFonts = [
+      { class: 'font-kosugi', weight: 0.22 },
+      { class: 'font-mplus',  weight: 0.22 },
+      { class: 'font-noto',   weight: 0.22 },
+      { class: 'font-zen',    weight: 0.22 },
+      { class: 'font-boku',   weight: 0.12 }
+    ];
 
-    vocabQueue = shuffleArray(vocabQueue);
-    total = vocabQueue.length;
-    nextSentence();
-  }
+    const todayStr = new Date().toISOString().split('T')[0];
+    let vocabQueue = [], current = null, showingEnglish = false, total = 0;
 
-  function updateProgress() {
-    const done = total - vocabQueue.length;
-    document.getElementById("progress").innerText = `Progress: ${done} / ${total}`;
-  }
-
-  function nextSentence() {
-    if (vocabQueue.length === 0) {
-      document.getElementById("ja").innerText = "Done for now!";
-      document.getElementById("en").innerText = "";
-      document.getElementById("progress").innerText = "";
-      return;
+    function getTodaySeenSentences() {
+      const log = JSON.parse(localStorage.getItem("review_log") || "[]");
+      return new Set(log.filter(r => r.reviewed_at.startsWith(todayStr)).map(r => r.ja));
     }
-    current = vocabQueue.shift();
-    showingEnglish = false;
 
-    const jaDiv = document.getElementById("ja");
-    jaDiv.className = weightedRandomFont();
-    jaDiv.innerText = current.ja;
+    function weightedRandomFont() {
+      const r = Math.random();
+      let sum = 0;
+      for (const f of weightedFonts) {
+        sum += f.weight;
+        if (r < sum) return f.class;
+      }
+      return weightedFonts[weightedFonts.length - 1].class;
+    }
 
-    document.getElementById("en").innerText = current.en;
-    document.getElementById("en").style.display = "none";
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
 
-    updateProgress();
-  }
+    async function fetchUpcomingVocab() {
+      const now = new Date();
+      const after = new Date(now.getTime() + settings.minDays * 86400000);
+      const before = new Date(now.getTime() + settings.maxDays * 86400000);
 
-  function logReview(known) {
-    const log = JSON.parse(localStorage.getItem("review_log") || "[]");
-    log.push({
-      vocab_id: current.vocab_id,
-      ja: current.ja,
-      en: current.en,
-      known,
-      reviewed_at: new Date().toISOString()
-    });
-    localStorage.setItem("review_log", JSON.stringify(log));
-    document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.ja} (${current.en})`;
-  }
+      const url = new URL("https://api.wanikani.com/v2/assignments");
+      url.searchParams.set("subject_types", "vocabulary");
+      url.searchParams.set("available_after", after.toISOString());
+      url.searchParams.set("available_before", before.toISOString());
+      url.searchParams.set("burned", "false");
+      url.searchParams.set("hidden", "false");
 
-  function handleAdvance(correct = true) {
-    if (!current) return;
-    if (!showingEnglish) {
-      document.getElementById("en").style.display = "block";
-      showingEnglish = true;
-    } else {
-      logReview(correct);
+      const assignments = await fetch(url.toString(), { headers }).then(res => res.json());
+      const ids = assignments.data.map(a => a.data.subject_id);
+
+      const subjectDetails = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const batch = ids.slice(i, i + 100).join(',');
+        const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${batch}`, { headers }).then(res => res.json());
+        subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
+      }
+
+      const seenToday = getTodaySeenSentences();
+
+      vocabQueue = subjectDetails.map(v => {
+        const sentences = v.data.context_sentences;
+        const rand = Math.floor(Math.random() * sentences.length);
+        return {
+          vocab_id: v.id,
+          characters: v.data.characters,
+          ja: sentences[rand].ja,
+          en: sentences[rand].en
+        };
+      }).filter(item => !seenToday.has(item.ja));
+
+      vocabQueue = shuffleArray(vocabQueue);
+      total = vocabQueue.length;
       nextSentence();
     }
-  }
 
-  document.getElementById("revealBtn").addEventListener("click", () => handleAdvance(true));
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === " ") {
-      e.preventDefault();
-      handleAdvance(true);
-    } else if (e.key === "1") {
-      handleAdvance(false);
+    function updateProgress() {
+      const done = total - vocabQueue.length;
+      document.getElementById("progress").innerText = `Progress: ${done} / ${total}`;
     }
-  });
 
-  function showSettings() {
-    document.getElementById("minDays").value = settings.minDays;
-    document.getElementById("maxDays").value = settings.maxDays;
-    document.getElementById("overlay").style.display = "block";
-    document.getElementById("settingsDialog").style.display = "block";
-  }
+    function nextSentence() {
+      if (vocabQueue.length === 0) {
+        document.getElementById("ja").innerText = "Done for now!";
+        document.getElementById("en").innerText = "";
+        document.getElementById("progress").innerText = "";
+        document.getElementById("translateLink").style.display = "none";
+        return;
+      }
+      current = vocabQueue.shift();
+      showingEnglish = false;
+      const jaDiv = document.getElementById("ja");
+      jaDiv.className = weightedRandomFont();
+      jaDiv.innerText = current.ja;
+      document.getElementById("en").innerText = current.en;
+      document.getElementById("en").style.display = "none";
+      document.getElementById("translateLink").href = `https://translate.google.com/?sl=ja&tl=en&text=${encodeURIComponent(current.ja)}&op=translate`;
+      document.getElementById("translateLink").style.display = "inline-block";
+      updateProgress();
+    }
 
-  function hideSettings() {
-    document.getElementById("overlay").style.display = "none";
-    document.getElementById("settingsDialog").style.display = "none";
-  }
+    function logReview(known) {
+      const log = JSON.parse(localStorage.getItem("review_log") || "[]");
+      log.push({ vocab_id: current.vocab_id, ja: current.ja, en: current.en, known, reviewed_at: new Date().toISOString() });
+      localStorage.setItem("review_log", JSON.stringify(log));
+      document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.ja} (${current.en})`;
+    }
 
-  function saveSettings() {
-    settings.minDays = parseInt(document.getElementById("minDays").value, 10);
-    settings.maxDays = parseInt(document.getElementById("maxDays").value, 10);
-    localStorage.setItem("settings", JSON.stringify(settings));
-    hideSettings();
-    location.reload(); // Reload to re-fetch with new window
-  }
+    function handleAdvance(correct = true) {
+      if (!current) return;
+      if (!showingEnglish) {
+        document.getElementById("en").style.display = "block";
+        showingEnglish = true;
+      } else {
+        logReview(correct);
+        nextSentence();
+      }
+    }
 
-  fetchUpcomingVocab();
+    document.getElementById("revealBtn").addEventListener("click", () => handleAdvance(true));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === " ") { e.preventDefault(); handleAdvance(true); }
+      else if (e.key === "1") { handleAdvance(false); }
+    });
+
+    function showSettings() {
+      document.getElementById("minDays").value = settings.minDays;
+      document.getElementById("maxDays").value = settings.maxDays;
+      document.getElementById("apiKeyInput").value = API_TOKEN || "";
+      document.getElementById("overlay").style.display = "block";
+      document.getElementById("settingsDialog").style.display = "block";
+    }
+
+    function hideSettings() {
+      document.getElementById("overlay").style.display = "none";
+      document.getElementById("settingsDialog").style.display = "none";
+    }
+
+    function saveSettings() {
+      settings.minDays = parseInt(document.getElementById("minDays").value, 10);
+      settings.maxDays = parseInt(document.getElementById("maxDays").value, 10);
+      localStorage.setItem("settings", JSON.stringify(settings));
+
+      const newKey = document.getElementById("apiKeyInput").value.trim();
+      if (newKey) {
+        localStorage.setItem("wanikani_api_token", newKey);
+      }
+
+      hideSettings();
+      location.reload();
+    }
+
+    fetchUpcomingVocab();
   </script>
-
-
 </body>
 </html>
+
