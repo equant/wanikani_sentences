@@ -1,25 +1,52 @@
-# wanikani_sentences
+# WaniKani Sentences
 WaniKani sentence practice browser-only tool.
 
-I quickly mocked up this “WaniKani Sentence Practice” browser-only tool. It…
+This is a WaniKani Sentence Practice tool that works entirely in your browser. It:
 
-* Uses your WaniKani API key to fetch WaniKani sentences with vocabulary from upcoming reviews (in a user-definable time period).
+* Uses your WaniKani API key to fetch WaniKani sentences with vocabulary based on your selected Study Mode.
 * Shows one random context sentence per vocab word.
 * Lets you press Space to reveal the English translation and continue, or 1 to mark “didn’t know”.
 * Skips sentences you’ve already seen today.
 * Randomizes the vocab order.
-* Randomizes the Japanese display font (you can change what fonts, and the frequency of their use in the html source).
-* Tracks progress and review history in localStorage (progress tracking isn’t utilized in any way at this point).
-* This is not an SRS tool, it's just a reading WaniKani sentences review tool.
+* Randomizes the Japanese display font to improve reading flexibility.
+* Tracks progress and review history in localStorage.
 
-Just open the HTML file in a browser...
+This is not an SRS tool, it's just a reading WaniKani sentences review tool.
+
+## Progressive Web App (PWA) Support
+This application is designed as a PWA, meaning it comes with a Service Worker (`sw.js`) and a App Manifest (`manifest.json`). This allows you to "Add to Homescreen" on your phone and use it like a native offline app.
+
+To use all features, the app must be served over `http://localhost` or `https://` (meaning you usually can't just double-click `index.html` on your phone anymore).
 
 # How to Use/Install?
 
-1. Download the index.html file from this repository.
-2. Get your wanikani api from the wanikani site Account->Settings->Api Tokens (you will need to generate one if you haven't before)
-3. Open the `index.html` file you downloaded with your favorite browser and paste the API key into the popup that asks for it.  Or, if for some reason you don't see a popup asking for the API key, you can click the gear icon and enter the key in the settings.
+### Option 1: Quick Testing Locally
+To run this on your laptop, and to access it on your phone over Wi-Fi:
+1. Open a terminal in this project folder.
+2. Run a local web server: `python3 -m http.server 8000`
+3. On your laptop, open a browser and navigate to `http://localhost:8000`.
+4. On your phone, make sure you are on the same Wi-Fi network as your laptop. Find your laptop's local IP address (e.g. `192.168.1.5`). Open Safari or Chrome on your phone and go to `http://192.168.1.5:8000`. 
+5. To install it on your phone: Tap "Share" (iOS) or the three-dot menu (Android) and choose "Add to Home Screen".
 
-# What does the Start (min) End (max) day offset stuff mean?
+### Option 2: Hosting it Online
+Since it's just pure HTML/JS, you can upload these 4 files (`index.html`, `sw.js`, `manifest.json`, `icon.svg`) to any free static host (like GitHub Pages, Netlify, or Vercel) and access the URL on your phone anytime, anywhere.
 
-In the settings, you use "Start (min) day offset" and "End (max) day offset" to select what period of time in the future you want to be studying for.  If you select 0 and 1, you will be studying vocab from today's set of WaniKani reviews.  If you select 1 and 2, you will be reviewing vocab that WaniKani will be showing you tomorrow.  If you select 7 and 14 you will be reviewing vocabulary that you won't be tested on (by WaniKani) until a week from now.  Etc.  Hope that makes sense.
+# Study Modes
+
+In the settings (gear icon), you can choose your desired Study Mode:
+
+**Review Mode**
+You use "Start (min) day offset" and "End (max) day offset" to select what period of time in the future you want to be studying for. If you select 0 and 1, you will be studying vocab from today's set of WaniKani reviews. If you select 1 and 2, you will be reviewing vocab that WaniKani will be showing you tomorrow.
+
+**Recent Lessons**
+Pulls vocabulary from the last ~100 lessons you completed, ordered by when you first learned them.
+
+**Burned Items**
+Shuffles vocabulary items that you have successfully "Burned" in WaniKani.
+
+---
+
+### Local Text-To-Speech Note
+"Local Text-to-Speech" relies on your browser or operating system's built-in Japanese speech synthesis voices. 
+- Windows/macOS/iOS/Android generally have Japanese voices pre-installed.
+- **Linux** often does not have Japanese voices installed by default. If the voice list is empty or fails to read Japanese, use the "Google Translate" audio mode, or install a Japanese TTS package for your distro (like `speech-dispatcher`).

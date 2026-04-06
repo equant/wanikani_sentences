@@ -3,7 +3,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WaniKani Sentence Practice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#333333">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <title>WaniKani Sentences</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Kosugi+Maru&family=M+PLUS+1p&family=Noto+Sans+JP&family=Zen+Kaku+Gothic+New&family=Yuji+Boku&display=swap');
 
@@ -27,11 +32,11 @@
   </style>
 </head>
 <body>
-  <h1>WaniKani Sentence Practice</h1>
+  <h1 style="font-size: 1.5em;">WaniKani Sentences</h1>
   <div id="ja">Loading...</div>
   <div id="en"></div>
   <button id="revealBtn">Reveal / Next</button>
-  <button id="audioBtn" title="Play audio" style="font-size: 0.8em; margin: 0 0.5em; text-decoration: none;">🔈</button>
+  <button id="audioBtn" title="Play audio" style="font-size: 1em; padding: 0.6em;">🔈</button>
   <div id="progress"></div>
   <div id="log"></div>
   <button id="settingsBtn" onclick="showSettings()">⚙️</button>
@@ -39,34 +44,57 @@
   <!-- Settings Popup -->
   <div id="overlay" onclick="hideSettings()"></div>
   <div id="settingsDialog">
-    <h3>Settings</h3>
-    <label>Start (min) day offset: <input id="minDays" type="number" min="0" max="30" /></label><br><br>
-    <label>End (max) day offset: <input id="maxDays" type="number" min="1" max="30" /></label><br><br>
+    <h3 style="margin-top: 0">Settings</h3>
+    <label>Study Mode:
+      <select id="studyMode">
+        <option value="upcoming">Review Mode</option>
+        <option value="recent_lessons">Recent Lessons</option>
+        <option value="burned">Burned Items</option>
+      </select>
+    </label><br><br>
+
+    <label>Batch Size (n): <input id="batchSize" type="number" min="1" max="500" style="width:60px" /></label><br><br>
+
+    <div id="recentSettings" style="display:none;">
+      <label>Recent Pool Size: <input id="recentPoolSize" type="number" min="1" max="1000" style="width:60px" /></label><br><br>
+    </div>
+
+    <div id="dayOffsets">
+      <label>Start (min) day offset: <input id="minDays" type="number" min="0" max="30" style="width:40px" /></label><br><br>
+      <label>End (max) day offset: <input id="maxDays" type="number" min="1" max="30" style="width:40px" /></label><br><br>
+    </div>
+
     <label>WaniKani API Key: <input id="apiKeyInput" type="text" /></label><br><br>
+
     <label>Audio Mode:
       <select id="audioMode">
-        <option value="local">Local Text-to-speach</option>
+        <option value="local">Local Text-to-Speech</option>
         <option value="translate">Google Translate</option>
       </select>
     </label><br><br>
+
+    <div id="localTTSOptions" style="display:none;">
+      <label>Voice: <select id="voiceSelect"></select></label><br><br>
+      <label>Speed: <input type="range" id="speechRate" min="0.5" max="1.5" step="0.1" value="1.0" style="vertical-align: middle;"/> <span id="speechRateVal">1.0</span>x</label><br><br>
+    </div>
+
     <button onclick="saveSettings()">Save</button>
     <button onclick="hideSettings()">Cancel</button>
   </div>
 
   <script>
-    const defaultSettings = { minDays: 1, maxDays: 7, audioMode: "translate" };
-    let settings = JSON.parse(localStorage.getItem("settings") || JSON.stringify(defaultSettings));
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg failed:', err));
+      });
+    }
+
+    const defaultSettings = { minDays: 1, maxDays: 7, audioMode: "translate", studyMode: "upcoming", speechRate: 1.0, voiceURI: "", batchSize: 20, recentPoolSize: 30 };
+    let settings = JSON.parse(localStorage.getItem("settings") || "{}");
+    settings = { ...defaultSettings, ...settings };
+    if (settings.studyMode === "newly_learned") settings.studyMode = "recent_lessons";
 
     let API_TOKEN = localStorage.getItem("wanikani_api_token");
-    if (!API_TOKEN) {
-      API_TOKEN = prompt("Enter your WaniKani API Token:");
-      if (API_TOKEN && API_TOKEN.trim() !== "") {
-        localStorage.setItem("wanikani_api_token", API_TOKEN);
-      } else {
-        alert("API key is required. Reload and enter it when prompted.");
-        throw new Error("No API key provided");
-      }
-    }
 
     const headers = { "Authorization": `Bearer ${API_TOKEN}` };
     const weightedFonts = [
@@ -78,7 +106,37 @@
     ];
 
     const todayStr = new Date().toISOString().split('T')[0];
-    let vocabQueue = [], current = null, showingEnglish = false, total = 0;
+    let vocabQueue = [], current = null, showingEnglish = false, total = 0, voices = [];
+
+    // Setup local TTS options
+    function populateVoiceList() {
+      voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ja'));
+      const voiceSelect = document.getElementById("voiceSelect");
+      if (voices.length === 0) {
+        voiceSelect.innerHTML = `<option value="">No local Japanese voices found</option>`;
+      } else {
+        voiceSelect.innerHTML = voices.map((v, i) => `<option value="${i}">${v.name}</option>`).join('');
+        if (settings.voiceURI) {
+          const idx = voices.findIndex(v => v.voiceURI === settings.voiceURI);
+          if (idx !== -1) voiceSelect.value = idx;
+        }
+      }
+    }
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = populateVoiceList;
+    }
+
+    // Settings UI dynamic toggles
+    document.getElementById("audioMode").addEventListener("change", (e) => {
+      document.getElementById("localTTSOptions").style.display = e.target.value === "local" ? "block" : "none";
+    });
+    document.getElementById("studyMode").addEventListener("change", (e) => {
+      document.getElementById("dayOffsets").style.display = e.target.value === "upcoming" ? "block" : "none";
+      document.getElementById("recentSettings").style.display = e.target.value === "recent_lessons" ? "block" : "none";
+    });
+    document.getElementById("speechRate").addEventListener("input", (e) => {
+      document.getElementById("speechRateVal").innerText = parseFloat(e.target.value).toFixed(1);
+    });
 
     function getTodaySeenSentences() {
       const log = JSON.parse(localStorage.getItem("review_log") || "[]");
@@ -99,37 +157,103 @@
       return array;
     }
 
-    async function fetchUpcomingVocab() {
-      const now = new Date();
-      const after = new Date(now.getTime() + settings.minDays * 86400000);
-      const before = new Date(now.getTime() + settings.maxDays * 86400000);
-      const url = new URL("https://api.wanikani.com/v2/assignments");
-      url.searchParams.set("subject_types", "vocabulary");
-      url.searchParams.set("available_after", after.toISOString());
-      url.searchParams.set("available_before", before.toISOString());
-      url.searchParams.set("burned", "false");
-      url.searchParams.set("hidden", "false");
-
-      const assignments = await fetch(url, { headers }).then(res => res.json());
-      const ids = assignments.data.map(a => a.data.subject_id);
-      const subjectDetails = [];
-
-      for (let i = 0; i < ids.length; i += 100) {
-        const batch = ids.slice(i, i + 100).join(",");
-        const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${batch}`, { headers }).then(r => r.json());
-        subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
+    async function fetchVocabData() {
+      if (!API_TOKEN) {
+        document.getElementById("ja").innerHTML = "Ready.<br>Please enter API key in Settings (⚙️).";
+        return;
       }
 
-      const seenToday = getTodaySeenSentences();
-      vocabQueue = subjectDetails.map(v => {
-        const s = v.data.context_sentences;
-        const rand = Math.floor(Math.random() * s.length);
-        return { vocab_id: v.id, characters: v.data.characters, ja: s[rand].ja, en: s[rand].en };
-      }).filter(i => !seenToday.has(i.ja));
+      document.getElementById("ja").innerText = "Loading sentences...";
+      const url = new URL("https://api.wanikani.com/v2/assignments");
+      url.searchParams.set("subject_types", "vocabulary");
+      url.searchParams.set("hidden", "false");
 
-      vocabQueue = shuffleArray(vocabQueue);
-      total = vocabQueue.length;
-      nextSentence();
+      if (settings.studyMode === "recent_lessons") {
+        url.searchParams.set("started", "true");
+        document.getElementById("ja").innerHTML = "Loading assignments... <br>(May take a moment for Recent Lessons)";
+      } else if (settings.studyMode === "burned") {
+        url.searchParams.set("srs_stages", "9");
+      } else {
+        const now = new Date();
+        const after = new Date(now.getTime() + settings.minDays * 86400000);
+        const before = new Date(now.getTime() + settings.maxDays * 86400000);
+        url.searchParams.set("available_after", after.toISOString());
+        url.searchParams.set("available_before", before.toISOString());
+        url.searchParams.set("burned", "false");
+      }
+
+      try {
+        let allAssignments = [];
+        let nextUrl = url.toString();
+        
+        if (settings.studyMode === "recent_lessons") {
+          while (nextUrl) {
+            const res = await fetch(nextUrl, { headers });
+            if (!res.ok) throw new Error("API Error: " + res.status);
+            const json = await res.json();
+            allAssignments.push(...json.data);
+            nextUrl = json.pages.next_url;
+          }
+          allAssignments.sort((a,b) => new Date(b.data.started_at) - new Date(a.data.started_at));
+          allAssignments = allAssignments.slice(0, settings.recentPoolSize);
+        } else {
+          const res = await fetch(nextUrl, { headers });
+          if (!res.ok) throw new Error("API Error: " + res.status);
+          const json = await res.json();
+          allAssignments = json.data;
+        }
+
+        let ids = allAssignments.map(a => a.data.subject_id);
+
+        if (settings.studyMode === "recent_lessons") {
+            let seen = JSON.parse(localStorage.getItem("seen_recent_ids") || "[]");
+            let unseenIds = ids.filter(id => !seen.includes(id));
+            if (unseenIds.length === 0 && ids.length > 0) {
+               seen = [];
+               localStorage.setItem("seen_recent_ids", "[]");
+               unseenIds = ids;
+            }
+            ids = unseenIds;
+        } else if (settings.studyMode === "burned") {
+            let seen = JSON.parse(localStorage.getItem("seen_burned_ids") || "[]");
+            let unseenIds = ids.filter(id => !seen.includes(id));
+            if (unseenIds.length === 0 && ids.length > 0) {
+               seen = [];
+               localStorage.setItem("seen_burned_ids", "[]");
+               unseenIds = ids;
+            }
+            ids = unseenIds;
+        }
+        
+        // Truncate to save API calls in random modes
+        if (ids.length > 500) ids = shuffleArray(ids).slice(0, 500);
+
+        const subjectDetails = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          const batch = ids.slice(i, i + 100).join(",");
+          const subjects = await fetch(`https://api.wanikani.com/v2/subjects?ids=${batch}`, { headers }).then(r => r.json());
+          subjectDetails.push(...subjects.data.filter(s => s.object === "vocabulary"));
+        }
+
+        const seenToday = getTodaySeenSentences();
+        vocabQueue = subjectDetails.map(v => {
+          const s = v.data.context_sentences;
+          if (!s || s.length === 0) return null;
+          const rand = Math.floor(Math.random() * s.length);
+          return { vocab_id: v.id, characters: v.data.characters, ja: s[rand].ja, en: s[rand].en };
+        }).filter(i => {
+           if (!i) return false;
+           if (settings.studyMode === "upcoming") return !seenToday.has(i.ja);
+           return true; 
+        });
+
+        vocabQueue = shuffleArray(vocabQueue).slice(0, settings.batchSize);
+        total = vocabQueue.length;
+        nextSentence();
+      } catch (e) {
+        console.error(e);
+        document.getElementById("ja").innerHTML = "Error loading from WaniKani.<br>Check your API Key.";
+      }
     }
 
     function updateProgress() {
@@ -138,8 +262,14 @@
     }
 
     function speakLocal(text) {
+      if (speechSynthesis.speaking) speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = "ja-JP";
+      utter.rate = settings.speechRate || 1.0;
+      const voiceSelect = document.getElementById("voiceSelect");
+      if (voices.length > 0 && voiceSelect.value !== "") {
+        utter.voice = voices[voiceSelect.value];
+      }
       speechSynthesis.speak(utter);
     }
 
@@ -155,7 +285,8 @@
 
     function nextSentence() {
       if (vocabQueue.length === 0) {
-        document.getElementById("ja").innerText = "Done for now!";
+        current = null;
+        document.getElementById("ja").innerHTML = total > 0 ? "Batch complete!<br><br><button onclick='fetchVocabData()' style='font-size:0.6em; padding: 1em;'>Do another batch?</button>" : "No sentences found for criteria.<br><br><button onclick='fetchVocabData()' style='font-size:0.6em; padding: 1em;'>Retry</button>";
         document.getElementById("en").innerText = "";
         document.getElementById("progress").innerText = "";
         return;
@@ -174,11 +305,25 @@
       const log = JSON.parse(localStorage.getItem("review_log") || "[]");
       log.push({ vocab_id: current.vocab_id, ja: current.ja, en: current.en, known, reviewed_at: new Date().toISOString() });
       localStorage.setItem("review_log", JSON.stringify(log));
-      document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.ja} (${current.en})`;
+
+      if (settings.studyMode === "recent_lessons") {
+         let seen = JSON.parse(localStorage.getItem("seen_recent_ids") || "[]");
+         if (!seen.includes(current.vocab_id)) seen.push(current.vocab_id);
+         localStorage.setItem("seen_recent_ids", JSON.stringify(seen));
+      } else if (settings.studyMode === "burned") {
+         let seen = JSON.parse(localStorage.getItem("seen_burned_ids") || "[]");
+         if (!seen.includes(current.vocab_id)) seen.push(current.vocab_id);
+         localStorage.setItem("seen_burned_ids", JSON.stringify(seen));
+      }
+
+      document.getElementById("log").innerText = `${known ? "✅" : "❌"} ${current.characters}: ${current.en}`;
     }
 
     function handleAdvance(correct = true) {
-      if (!current) return;
+      if (!current) {
+         if (total > 0) fetchVocabData();
+         return;
+      }
       if (!showingEnglish) {
         document.getElementById("en").style.display = "block";
         showingEnglish = true;
@@ -191,17 +336,30 @@
     document.getElementById("revealBtn").addEventListener("click", () => handleAdvance(true));
     document.getElementById("audioBtn").addEventListener("click", playAudio);
     document.addEventListener("keydown", e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
       if (e.key === " ") { e.preventDefault(); handleAdvance(true); }
       else if (e.key === "1") handleAdvance(false);
     });
 
     function showSettings() {
+      document.getElementById("batchSize").value = settings.batchSize;
+      document.getElementById("recentPoolSize").value = settings.recentPoolSize;
       document.getElementById("minDays").value = settings.minDays;
       document.getElementById("maxDays").value = settings.maxDays;
       document.getElementById("apiKeyInput").value = API_TOKEN || "";
+      document.getElementById("studyMode").value = settings.studyMode || "upcoming";
       document.getElementById("audioMode").value = settings.audioMode || "translate";
+      document.getElementById("speechRate").value = settings.speechRate || 1.0;
+      document.getElementById("speechRateVal").innerText = parseFloat(settings.speechRate || 1.0).toFixed(1);
+
+      document.getElementById("localTTSOptions").style.display = (settings.audioMode === "local") ? "block" : "none";
+      document.getElementById("dayOffsets").style.display = (settings.studyMode === "upcoming") ? "block" : "none";
+      document.getElementById("recentSettings").style.display = (settings.studyMode === "recent_lessons") ? "block" : "none";
+
       document.getElementById("overlay").style.display = "block";
       document.getElementById("settingsDialog").style.display = "block";
+      
+      populateVoiceList();
     }
 
     function hideSettings() {
@@ -210,9 +368,19 @@
     }
 
     function saveSettings() {
+      settings.batchSize = parseInt(document.getElementById("batchSize").value, 10);
+      settings.recentPoolSize = parseInt(document.getElementById("recentPoolSize").value, 10);
+      settings.studyMode = document.getElementById("studyMode").value;
       settings.minDays = parseInt(document.getElementById("minDays").value, 10);
       settings.maxDays = parseInt(document.getElementById("maxDays").value, 10);
       settings.audioMode = document.getElementById("audioMode").value;
+      settings.speechRate = parseFloat(document.getElementById("speechRate").value);
+
+      const vSel = document.getElementById("voiceSelect");
+      if (voices.length > 0 && vSel.value !== "") {
+        settings.voiceURI = voices[vSel.value].voiceURI;
+      }
+
       localStorage.setItem("settings", JSON.stringify(settings));
 
       const newKey = document.getElementById("apiKeyInput").value.trim();
@@ -222,7 +390,7 @@
       location.reload();
     }
 
-    fetchUpcomingVocab();
+    fetchVocabData();
   </script>
 </body>
 </html>
