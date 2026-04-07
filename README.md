@@ -4,9 +4,10 @@ WaniKani sentence practice browser-only tool.
 This is a WaniKani Sentence Practice tool that works entirely in your browser. It:
 
 * Uses your WaniKani API key to fetch WaniKani sentences with vocabulary based on your selected Study Mode.
+* Groups items into manageable chunks based on your defined Batch Size.
 * Shows one random context sentence per vocab word.
 * Lets you press Space to reveal the English translation and continue, or 1 to mark “didn’t know”.
-* Skips sentences you’ve already seen today.
+* Skips sentences you’ve already seen inside an active iteration cycle.
 * Randomizes the vocab order.
 * Randomizes the Japanese display font to improve reading flexibility.
 * Tracks progress and review history in localStorage.
@@ -28,8 +29,12 @@ To run this on your laptop, and to access it on your phone over Wi-Fi:
 4. On your phone, make sure you are on the same Wi-Fi network as your laptop. Find your laptop's local IP address (e.g. `192.168.1.5`). Open Safari or Chrome on your phone and go to `http://192.168.1.5:8000`. 
 5. To install it on your phone: Tap "Share" (iOS) or the three-dot menu (Android) and choose "Add to Home Screen".
 
-### Option 2: Hosting it Online
-Since it's just pure HTML/JS, you can upload these 4 files (`index.html`, `sw.js`, `manifest.json`, `icon.svg`) to any free static host (like GitHub Pages, Netlify, or Vercel) and access the URL on your phone anytime, anywhere.
+### Option 2: Hosting it on GitHub Pages (Recommended)
+Since it's just pure static front-end code, you can easily host this project for free using GitHub Pages. 
+1. Push this code to a repository on GitHub.
+2. Go to the repository **Settings** -> **Pages**.
+3. Set the source "Branch" to `main` and click Save.
+4. GitHub will give you a live URL. Visit that URL on your phone to "Add to Home Screen". Any future `git push` will automatically update the app on your phone!
 
 # Study Modes
 
@@ -39,10 +44,15 @@ In the settings (gear icon), you can choose your desired Study Mode:
 You use "Start (min) day offset" and "End (max) day offset" to select what period of time in the future you want to be studying for. If you select 0 and 1, you will be studying vocab from today's set of WaniKani reviews. If you select 1 and 2, you will be reviewing vocab that WaniKani will be showing you tomorrow.
 
 **Recent Lessons**
-Pulls vocabulary from the last ~100 lessons you completed, ordered by when you first learned them.
+Pulls vocabulary from your most recent user-defined pool of lessons (configurable via "Recent Pool Size", default 30). This allows you to practice strictly newly learned items until you've cycled through all of them.
 
 **Burned Items**
-Shuffles vocabulary items that you have successfully "Burned" in WaniKani.
+Shuffles vocabulary items that you have successfully "Burned" in WaniKani. Once you review a burned item, you will not see it again until you have completely cycled through your entire WaniKani burned collection!
+
+---
+
+## Batch Learning System
+To keep study sessions manageable, the application limits the amount of vocabulary loaded at once based on your "Batch Size (n)" setting. Once you complete a batch, a button will appear (or you can just press **Space**) to instantly load the next batch of unseen vocabulary without reloading the page. Items reviewed are remembered by Study Mode so you never do duplicates in the same run!
 
 ---
 

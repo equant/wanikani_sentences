@@ -12,8 +12,9 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Kosugi+Maru&family=M+PLUS+1p&family=Noto+Sans+JP&family=Zen+Kaku+Gothic+New&family=Yuji+Boku&display=swap');
 
-    body { font-family: sans-serif; text-align: center; padding: 2em; }
-    #settingsBtn { position: absolute; top: 1em; right: 1em; background: none; border: none; font-size: 1.5em; cursor: pointer; }
+    body { font-family: sans-serif; text-align: center; padding: 2em 1em; }
+    h1 { padding: 0 40px; margin-top: 0; font-size: 1.5em; }
+    #settingsBtn { position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 1.5em; cursor: pointer; padding: 10px; z-index: 2; }
     #ja, #en { font-size: 2.5em; margin: 1em; }
     #en { display: none; color: gray; }
     #progress, #log { margin-top: 1em; font-size: 1em; color: #666; }
@@ -24,15 +25,16 @@
     .font-boku   { font-family: 'Yuji Boku', serif; }
     button { font-size: 1em; padding: 0.5em 1em; margin: 1em; }
 
-    #settingsDialog { display: none; position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+    #settingsDialog { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
       background: #fff; border: 1px solid #ccc; padding: 1.5em; z-index: 10;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: left; width: 90%; max-width: 350px; 
+      max-height: 90vh; overflow-y: auto; border-radius: 8px; box-sizing: border-box; }
     #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.3); z-index: 5; }
   </style>
 </head>
 <body>
-  <h1 style="font-size: 1.5em;">WaniKani Sentences</h1>
+  <h1>WaniKani Sentences</h1>
   <div id="ja">Loading...</div>
   <div id="en"></div>
   <button id="revealBtn">Reveal / Next</button>
@@ -78,8 +80,10 @@
       <label>Speed: <input type="range" id="speechRate" min="0.5" max="1.5" step="0.1" value="1.0" style="vertical-align: middle;"/> <span id="speechRateVal">1.0</span>x</label><br><br>
     </div>
 
-    <button onclick="saveSettings()">Save</button>
-    <button onclick="hideSettings()">Cancel</button>
+    <div style="text-align: right; margin-top: 1em;">
+      <button onclick="hideSettings()">Cancel</button>
+      <button onclick="saveSettings()" style="font-weight:bold;">Save Options</button>
+    </div>
   </div>
 
   <script>
@@ -89,7 +93,7 @@
       });
     }
 
-    const defaultSettings = { minDays: 1, maxDays: 7, audioMode: "translate", studyMode: "upcoming", speechRate: 1.0, voiceURI: "", batchSize: 20, recentPoolSize: 30 };
+    const defaultSettings = { minDays: 1, maxDays: 7, audioMode: "local", studyMode: "upcoming", speechRate: 1.0, voiceURI: "", batchSize: 20, recentPoolSize: 30 };
     let settings = JSON.parse(localStorage.getItem("settings") || "{}");
     settings = { ...defaultSettings, ...settings };
     if (settings.studyMode === "newly_learned") settings.studyMode = "recent_lessons";
